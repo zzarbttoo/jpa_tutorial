@@ -8,6 +8,8 @@ import javax.persistence.*;
 @Getter @Setter //setter은 안 사용하는 것이 낫다
 @NoArgsConstructor(access = AccessLevel.PROTECTED)
 @ToString(of = {"id", "username", "age"}) //연관관계 필드는 toString 안하는 것이 좋다(무한루프에 걸릴 수 있다)
+@NamedQuery(name = "Member.findByUsername",
+query = "select m from Member m where m.username = :username")
 public class Member {
 
     @Id @GeneratedValue //jpa가 알아서 순차적인 값을 넣어준다
