@@ -13,6 +13,8 @@ import org.springframework.data.domain.Sort;
 import org.springframework.test.annotation.Rollback;
 import org.springframework.transaction.annotation.Transactional;
 
+import javax.persistence.EntityManager;
+import javax.persistence.PersistenceContext;
 import java.util.Arrays;
 import java.util.List;
 import java.util.Optional;
@@ -28,6 +30,12 @@ class MemberRepositoryTest {
     MemberRepository memberRepository;
     @Autowired
     TeamRepository teamRepository;
+
+    //벌크성 업데이트를 할 때 DB에 직접 반영을 하기 때문에 entity에는 반영이 안된다
+    //그래서 업데이트 후에는 entity를 전부 날리고 다시 해야한다
+    //그래서 영속성 컨텍스트 매니저를 이용한다
+    @PersistenceContext
+    EntityManager entityManager;
 
     @Test
     public void testMember() {
@@ -242,4 +250,110 @@ class MemberRepositoryTest {
         assertThat(page.hasNext()).isTrue(); //다음 페이지 여부
 
     }
+
+    @Test
+    public void bulkUpdate(){
+        memberRepository.save(new Member("member1", 10));
+        memberRepository.save(new Member("member2", 19));
+        memberRepository.save(new Member("member3", 20));
+        memberRepository.save(new Member("member4", 21));
+        memberRepository.save(new Member("member5", 40));
+
+        int resultCount = memberRepository.bulkAgePlus(20);
+
+        //데이터를 날린다
+        //벌크 연산 이후에는 꼭 영속성 컨텍스트를 날려야한다
+        //entityManager.flush();
+        //entityManager.clear();
+
+        //혹은 modifying 옵션을 정한다
+
+        List<Member> members = memberRepository.findListByUsername("member5");
+        Member member5 = members.get(0);
+
+        System.out.println("member 5 ::: " + member5);
+
+        assertThat(resultCount).isEqualTo(3);
+
+    }
+
+    @Test
+    public void findMemberlazy() {
+        //given
+        //member1 -> teamA
+        //member2 -> teamB
+
+        Team teamA = new Team("teanA");
+        Team teamB = new Team("teanB");
+        teamRepository.save(teamA);
+        teamRepository.save(teamB);
+
+        Member member1 = new Member("member1", 10, teamA);
+        Member member2 = new Member("member1", 10, teamB);
+
+        memberRepository.save(member1);
+        memberRepository.save(member2);
+
+        entityManager.flush();
+        entityManager.clear();
+
+        //when N + 1 문제
+        //-> patch join으로 해결
+        //select Member 1
+        //List<T> members = memberRepository.findAll(); //member만 db에서 긁어옴
+        //List<Member> members = memberRepository.findAll(); //override 한 상태, 전체를 긁어오도록 EntityGraph 이용
+        //List<Member> members = memberRepository.findMemberFetchJoin();
+        List<Member> members = memberRepository.findEntityGraphByUsername("member1"); //메소드명 + EntityGraph
+
+        for(Member member : members){
+            System.out.println("member ::: " + member.getUsername());
+            //null로 남겨둘 수 없기 때문에 proxy 이용
+            System.out.println("member teamClass ::: " + member.getTeam().getClass());
+
+            //실제로 필요하면 db에서 들고오게 된다
+            System.out.println("team:::" + member.getTeam().getName());
+        }
+
+    }
+
+    @Test
+    public void queryHint(){
+        Member member1 = new Member("member1", 10);
+        //given
+        memberRepository.save(member1);
+        entityManager.flush();
+        entityManager.clear();
+
+        //when
+        //Optional<Member> byId = memberRepository.findById(member1.getId());
+        //Member findMember = byId.get();
+
+        Member findMember = memberRepository.findReadOnlyByUsername("member1");
+
+        findMember.setUsername("member2"); //변경 감지를 아예 안하기 때문에 update 진행하지 않음
+
+        entityManager.flush();
+
+
+    }
+
+    @Test
+    public void lock(){
+        Member member1 = new Member("member1", 10);
+        //given
+        memberRepository.save(member1);
+        entityManager.flush();
+        entityManager.clear();
+
+        //lock
+        List<Member> result = memberRepository.findLockByUsername("member1");
+
+    }
+
+    @Test
+    public void callCustom(){
+        List<Member> memberCustom = memberRepository.findMemberCustom();
+    }
+
+
 }

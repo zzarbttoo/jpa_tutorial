@@ -10,7 +10,9 @@ import javax.persistence.*;
 @ToString(of = {"id", "username", "age"}) //연관관계 필드는 toString 안하는 것이 좋다(무한루프에 걸릴 수 있다)
 @NamedQuery(name = "Member.findByUsername",
 query = "select m from Member m where m.username = :username")
-public class Member {
+@NamedEntityGraph(name = "Member.all", attributeNodes = @NamedAttributeNode("team")) //namedEntityGraph
+//public class Member extends JpaBaseEntity {
+public class Member extends BaseEntity {
 
     @Id @GeneratedValue //jpa가 알아서 순차적인 값을 넣어준다
     @Column(name = "member_id")
