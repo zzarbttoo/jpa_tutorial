@@ -18,7 +18,9 @@ import java.util.Optional;
 //Entity, Pk에 mapping 된 type
 //implements 해서 이용 불가능(다 구현헤야함) -> custom 기능 이용
 //custom 할 경우 두번째에 커스텀한 인터페이스 이름을 넣어주면 된다
-public interface MemberRepository extends JpaRepository<Member, Long> , MemberRepositoryCustom{
+//public interface MemberRepository extends JpaRepository<Member, Long> , MemberRepositoryCustom{
+public interface MemberRepository extends JpaRepository<Member, Long> , MemberRepositoryCustom
+        , JpaSpecificationExecutor<Member>{ //명세를 사용하기 위해 추가
 
     //List<Member> findByUsername(String username); //구현하지 않아도 동작함
     List<Member> findByUsernameAndAgeGreaterThan(String username, int age);
@@ -108,5 +110,19 @@ public interface MemberRepository extends JpaRepository<Member, Long> , MemberRe
     //select for update
     @Lock(LockModeType.PESSIMISTIC_WRITE)
     List<Member> findLockByUsername(String username);
+
+    //List<UsernameOnly> findProjectionsByUsername(@Param("username") String username);
+    //List<UsernameOnlyDTO> findProjectionsByUsername(@Param("username") String username);
+    <T> List<T> findProjectionsByUsername(@Param("username") String username, Class<T> type);
+
+    //@Query(value = "select * from member where uername = ? ", nativeQuery = true)
+    //Member findByNativeQuery(String username);
+
+    //@Query(value = "select m.member_id as id, m.username, t.name as teamName " +
+            //"from member m left join team t"
+            //, countQuery = "select count(*) from member",
+            //, nativeQuery = true)
+    //Page<MemberProjection> findByNativeProjection(Pageable pageable);
+
 
 }

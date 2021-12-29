@@ -3,13 +3,12 @@ package com.zzarbttoo.datajpa.repository;
 import com.zzarbttoo.datajpa.dto.MemberDTO;
 import com.zzarbttoo.datajpa.entity.Member;
 import com.zzarbttoo.datajpa.entity.Team;
+import org.assertj.core.api.Assertions;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
-import org.springframework.data.domain.Page;
-import org.springframework.data.domain.PageRequest;
-import org.springframework.data.domain.Slice;
-import org.springframework.data.domain.Sort;
+import org.springframework.data.domain.*;
+import org.springframework.data.jpa.domain.Specification;
 import org.springframework.test.annotation.Rollback;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -98,7 +97,6 @@ class MemberRepositoryTest {
         assertThat(result.get(0).getUsername()).isEqualTo("AAA");
         assertThat(result.get(0).getAge()).isEqualTo(20);
         assertThat(result.size()).isEqualTo(1);
-
 
     }
 
@@ -236,7 +234,7 @@ class MemberRepositoryTest {
         List<Member> content = page.getContent();
         long totalElements = page.getTotalElements(); //total count와 같은 역할
 
-        for(Member member : content){
+        for (Member member : content) {
             System.out.println("member ::: " + member);
         }
 
@@ -252,7 +250,7 @@ class MemberRepositoryTest {
     }
 
     @Test
-    public void bulkUpdate(){
+    public void bulkUpdate() {
         memberRepository.save(new Member("member1", 10));
         memberRepository.save(new Member("member2", 19));
         memberRepository.save(new Member("member3", 20));
@@ -305,7 +303,7 @@ class MemberRepositoryTest {
         //List<Member> members = memberRepository.findMemberFetchJoin();
         List<Member> members = memberRepository.findEntityGraphByUsername("member1"); //메소드명 + EntityGraph
 
-        for(Member member : members){
+        for (Member member : members) {
             System.out.println("member ::: " + member.getUsername());
             //null로 남겨둘 수 없기 때문에 proxy 이용
             System.out.println("member teamClass ::: " + member.getTeam().getClass());
@@ -317,7 +315,7 @@ class MemberRepositoryTest {
     }
 
     @Test
-    public void queryHint(){
+    public void queryHint() {
         Member member1 = new Member("member1", 10);
         //given
         memberRepository.save(member1);
@@ -338,7 +336,7 @@ class MemberRepositoryTest {
     }
 
     @Test
-    public void lock(){
+    public void lock() {
         Member member1 = new Member("member1", 10);
         //given
         memberRepository.save(member1);
@@ -351,9 +349,142 @@ class MemberRepositoryTest {
     }
 
     @Test
-    public void callCustom(){
+    public void callCustom() {
         List<Member> memberCustom = memberRepository.findMemberCustom();
     }
 
+
+    //그냥 쓰지 마....ㅜㅜ
+    //QueryDSL 을 사용하도록 하자^^^^
+    @Test
+    public void specBasic() {
+
+        //given
+        Team teamA = new Team("teamA");
+        entityManager.persist(teamA);
+
+        Member member1 = new Member("m1", 0, teamA);
+        Member member2 = new Member("m2", 0, teamA);
+
+        entityManager.persist(member1);
+        entityManager.persist(member2);
+
+        entityManager.flush();
+        entityManager.clear();
+
+        //when
+        Specification<Member> spec = MemberSpec.username("m1").and(MemberSpec.teamName("teamA"));
+        List<Member> result = memberRepository.findAll(spec);
+
+        Assertions.assertThat(result.size()).isEqualTo(1);
+
+    }
+
+
+    //query by example // 동적 쿼리를 편히 만들 수 있고, 도메인 객체를 그대로 사용 가능
+    //inner join까지는 가능하지만 복잡한 join은 안된다
+    @Test
+    public void queryByExample() {
+
+        //given
+        Team teamA = new Team("teamA");
+        entityManager.persist(teamA);
+
+        Member member1 = new Member("m1", 0, teamA);
+        Member member2 = new Member("m2", 0, teamA);
+
+        entityManager.persist(member1);
+        entityManager.persist(member2);
+
+        entityManager.flush();
+        entityManager.clear();
+
+        //when
+        //Probe : 실제 데이터가 있는 도메인 객체
+        Member member = new Member("m1");
+        Team team = new Team("teamA");
+        member.setTeam(team);
+
+        //무시할 조건 제시
+        ExampleMatcher matcher = ExampleMatcher.matching().withIgnorePaths("age");
+        Example<Member> example = Example.of(member, matcher);
+
+        List<Member> result = memberRepository.findAll(example);
+
+        assertThat(result.get(0).getUsername()).isEqualTo("m1");
+
+    }
+
+
+    //원하는 데이터만 반환할 수 있다
+    @Test
+    public void projections() {
+
+        //given
+        Team teamA = new Team("teamA");
+        entityManager.persist(teamA);
+
+        Member member1 = new Member("m1", 0, teamA);
+        Member member2 = new Member("m2", 0, teamA);
+
+        entityManager.persist(member1);
+        entityManager.persist(member2);
+
+        entityManager.flush();
+        entityManager.clear();
+
+        //when
+        //List<UsernameOnly> result = memberRepository.findProjectionsByUsername("m1");
+        //List<UsernameOnlyDTO> result = memberRepository.findProjectionsByUsername("m1");
+
+        //type을 명시해서 동적 projection도 가능하다
+        //List<UsernameOnlyDTO> result = memberRepository.findProjectionsByUsername("m1", UsernameOnlyDTO.class);
+
+        //중첩 구조 처리
+        //user은 필요한 것만 가져오고 team은 entity로 불러왔다
+        //첫번째 부분은 최적화가 되는데 두번째 부분은 최적화가 안된다
+        //left join을 사용하기 때문에 안전하게 데이터를 가져올 수 있다
+        List<NestedClosedProjections> result = memberRepository.findProjectionsByUsername("m1", NestedClosedProjections.class);
+
+        for (NestedClosedProjections nestedClosedProjections : result) {
+
+            String username = nestedClosedProjections.getUsername();
+            String teamName = nestedClosedProjections.getTeam().getName();
+
+            System.out.println("username ::: " + username);
+            System.out.println("teamName :::" + teamName);
+
+        }
+
+    }
+
+    //jdbc나 mybatis를 사용하는 것이 좋다
+//
+//    @Test
+//    public void nativeQuery(){
+//
+//        //given
+//        Team teamA = new Team("teamA");
+//        entityManager.persist(teamA);
+//
+//        Member member1 = new Member("m1", 0, teamA);
+//        Member member2 = new Member("m2", 0, teamA);
+//
+//        entityManager.persist(member1);
+//        entityManager.persist(member2);
+//
+//        entityManager.flush();
+//        entityManager.clear();
+//
+//        //when
+//        //Member result = memberRepository.findByNativeQuery("m1");
+//        Page<MemberProjection> result = memberRepository.findByNativeProjection(PageRequest.of(0, 10));
+//        List<MemberProjection> content = result.getContent();
+
+    //    for(MemberProjection memberProjection : content){
+    // System.out.println("memberProjection ::: " + memberProjection.getUsername());
+    // System.out.println("memberProjection ::: " + memberProjection.getTeamname());
+    //     }
+//    }
 
 }
